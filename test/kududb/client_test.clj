@@ -8,6 +8,19 @@
   (testing "FIXME, I fail."
     (is (= 0 1))))
 
+(defn maybe-put-some-data
+  ""
+  [client table-name]
+  (let [session (new-session client)
+        mutations [{:type :insert
+                    :rows [[{:col "pk" :type :string :value "ppkk"}
+                            {:col "val" :type :string :value "asfd"}]]}]
+        table (.openTable client table-name)]
+
+    (do
+      (println "apply>" (apply-mutation session table mutations))
+      (println "flush>" (flush session)))))
+
 (deftest main-test
   (testing "Connecting to KUDU service"
 
