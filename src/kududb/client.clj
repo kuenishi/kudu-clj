@@ -135,7 +135,7 @@
 (defn apply-mutation
   "
   mutation examples:
-     [{:type :insert, :row [[{ :pk "primary key", ... }, ..]..]}
+     [{:type :insert, :row [[{ :pk \"primary key\", ... }, ..]..]}
       {:type :delete, :row [[{ ... }}]}
       {:type :update, :row [[{ ... }}]}]
   "
