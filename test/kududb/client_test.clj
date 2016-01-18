@@ -1,6 +1,7 @@
 (ns kududb.client-test
   (:require [clojure.test :refer :all]
-            [kududb.client :refer :all]))
+            [kududb.client :refer :all]
+            [kududb.ql :refer :all]))
 
 ;; (:import [org.kududb.client])
 
@@ -55,3 +56,12 @@
                  (tablet-locations c table_name))
 
         (close! c)))))
+
+(deftest ql-test
+  (testing "ql test"
+    (println
+     (translate-tree
+      '(:select ["column-name"]
+                :from [(:table "table-name" "t")]
+                :where (eq :col "cola" 10))
+      ))))
