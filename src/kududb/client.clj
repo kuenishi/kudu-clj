@@ -14,8 +14,8 @@
    :double Type/DOUBLE,
    :int32 Type/INT32})
 
-(defn make-column
-  "Creates a column"
+(defn- make-column
+  "Creates a ColumnSchemaBuilder object"
   [col]
   (.build
    ;; doto must keep the same type at each stage of pipe
@@ -27,13 +27,14 @@
      )))
 
 (defn create-schema
-  "Creates a schema with Java-ish form"
+  "Creates a schema with Java-ish form (Schema Object)"
   [cols]
   (let [c (map make-column cols)]
     (Schema. (java.util.ArrayList. (into [] c)))))
 
 (defn scan-all-data
-  ""
+  "Utility function. It just retrieve all rows in a table.
+  Will be depcrecated."
   [client table_name]
   (let [scanner (.build (.newScannerBuilder client
                                             (.openTable client table_name)))
@@ -43,69 +44,111 @@
                acc))]
     (it () it)))
 
-(defn maybe-put-some-data
-  ""
-  [client table_name]
-  (let [session (.newSession client)
-        table (.openTable client table_name)]
-    (let [insert (.newInsert table)]
-    ;;(let [insert (.newUpdate table)]
-      (do
-        (doto (.getRow insert)
-          (.addString "pk" "adafds")
-          (.addString "val" "super dooper blooper2"))
-        (println (.apply session insert)
-                 (.flush session))))))
-
-
 (defn connect!
-  ""
+  "Connect to Kudu server with a destination IP:Port argument"
   [dest]
   (.build (KuduClient$KuduClientBuilder. dest)))
 
 (defn close!
-  ""
+  "Closes all related resources connected to a cluster"
   [conn]
   (.close conn))
 
 (defn list-tables
-  ""
+  "List all tables resident in a cluster"
   [conn]
   (into [] (.getTablesList (.getTablesList conn))))
 
 (defn table-exists
-  ""
+  "Client -> String -> Boolean
+  Returns whether the tables exists"
   [conn table-name]
   (.tableExists conn table-name))
 
 (defn open-table
-  ""
+  "Client -> String -> TableObject. Opens a table and make it ready to
+  hit. Wrapper of KuduClient#openTable."
   [conn table-name]
   (.openTable conn table-name))
 
 (defn create-table
-  ""
+  "Client -> String -> Schema
+  Creates a table; Wrapper of KuduClient#createTable."
   [conn table-name schema]
   (let [native-schema (create-schema schema)]
     (.createTable conn table-name native-schema)))
 
 (defn delete-table
-  ""
+  "Client -> String -> nil
+  Wrapper of KuduClient#deleteTable."
   [conn table-name]
   (.deleteTable conn table-name))
 
 (defn new-session
-  ""
+  "Client -> KuduSession, wrapper of KuduClient#newSession"
   [conn]
   (.newSession conn))
 
-(defn apply-mutation
+(defn- add-col
+  "Add column info to PartialRow object."
+  [partial-row col]
+  (let [col-name (col :col)
+        col-value (col :value)
+        col-type (col :type)]
+    (cond (= col-type :string)
+          (.addString partial-row col-name col-value)
+          (= col-type :binary)
+          (.addBytes partial-row col-name col-value)
+          (= col-type :int)
+          (.addLong partial-row col-name col-value))))
+
+(defn- handle-apply-response
   ""
-  [conn session])
+  [operation-response]
+  (if (.hasRowError operation-response)
+    (.getRowError operation-response)
+    [(.getWriteTimeStamp operation-response)
+     (.getElapsedMillis operation-response)]))
+
+(defn- build-mutation
+  " mut is like
+  {:type :insert,
+   :rows [[{}]]
+  }
+  "
+  [session table mut]
+  (map
+   (fn [row] ;; cols
+     (let [mutator
+           (cond (= (mut :type) :insert) (.newInsert table)
+                 (= (mut :type) :update) (.newUpdate table)
+                 (= (mut :type) :delete) (.newDelete table))
+           partial-row
+           (.getRow mutator)]
+       (do
+         (doseq [col row]
+           (add-col partial-row col))
+         (handle-apply-response
+          (.apply session mutator)))))
+   (mut :rows)))
+
+(defn apply-mutation
+  "
+  mutation examples:
+     [{:type :insert, :row [[{ :pk "primary key", ... }, ..]..]}
+      {:type :delete, :row [[{ ... }}]}
+      {:type :update, :row [[{ ... }}]}]
+  "
+  [session table mutations]
+  (if (empty? mutations)
+    ()
+    (doseq [mutation mutations]
+      (build-mutation session table mutation))))
 
 (defn flush
   ""
-  [session])
+  [session]
+  (.flush session))
 
 (defn scan
   ""
@@ -118,7 +161,7 @@
             (.listTabletServers conn))))
 
 (defn tablet-locations
-  ""
+  "Public: retri"
   [conn table-name]
   ;; TODO Translate LocatedTablet and LocatedTablet.Replica
   (into [] (.getTabletsLocations
